@@ -26,10 +26,11 @@
  */
 package org.hbase.async;
 
+import com.stumbleupon.async.Callback;
+
 import java.util.ArrayList;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-
 import org.hbase.async.generated.ClientPB;
 
 /**
@@ -528,7 +529,11 @@ public final class GetRequest extends HBaseRpc
     final ClientPB.GetResponse resp =
       readProtobuf(buf, ClientPB.GetResponse.PARSER);
     if (isGetRequest()) {
-      return extractResponse(resp, buf, cell_size);
+      if (filteringCallback != null) {
+          return extractStreamingResponse(resp, buf, cell_size);
+      } else {
+          return extractResponse(resp, buf, cell_size);
+      }
     } else {
       final ClientPB.Result result = resp.getResult();
       return result != null ? result.getExists() : false;  // is `null' possible here?
@@ -574,6 +579,53 @@ public final class GetRequest extends HBaseRpc
       final int kv_length = buf.readInt();
       kv = KeyValue.fromBuffer(buf, kv);
       rows.add(kv);
+    }
+    return rows;
+  }
+
+  /**
+   * Transforms a protobuf get response into a list of {@link KeyValue}.
+   * @param resp The protobuf response from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  ArrayList<KeyValue> extractStreamingResponse(final ClientPB.GetResponse resp,
+                                             final ChannelBuffer buf,
+                                             final int cell_size) {
+    final ClientPB.Result res = resp.getResult();
+    if (res == null) {
+      return new ArrayList<KeyValue>(0);
+    }
+    return convertStreamingResult(res, buf, cell_size);
+  }
+
+  /**
+   * Converts a protobuf result into a list of {@link KeyValue}.
+   * @param res The protobuf'ed results from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  ArrayList<KeyValue> convertStreamingResult(final ClientPB.Result res,
+                                           final ChannelBuffer buf,
+                                           final int cell_size) {
+    final int cell_kvs = RegionClient.numberOfKeyValuesAhead(buf, cell_size);
+    final int size = res.getCellCount();
+    final ArrayList<KeyValue> rows = new ArrayList<KeyValue>(10);
+    KeyValue kv = null;
+    for (int i = 0; i < size; i++) {
+      kv = KeyValue.fromCell(res.getCell(i), kv);
+      if (HBaseRpc.keep(kv, filteringCallback)) {
+          rows.add(kv);
+      }
+    }
+    for (int i = 0; i < cell_kvs; i++) {
+      final int kv_length = buf.readInt();
+      kv = KeyValue.fromBuffer(buf, kv);
+      if (HBaseRpc.keep(kv, filteringCallback)) {
+          rows.add(kv);
+      }
     }
     return rows;
   }

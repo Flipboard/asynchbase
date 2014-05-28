@@ -185,6 +185,13 @@ public abstract class HBaseRpc {
     static final byte[] MUTATE = { 'M', 'u', 't', 'a', 't', 'e' };
   }
 
+  /**
+   * A filtering Callback instance. If it is non-null it will be invoked for
+   * each KeyValue encountered during a scan or get. If the filter returns
+   * its argument, the KeyValue will be included in the results.
+   */
+  Callback<KeyValue,KeyValue> filteringCallback;
+
   /*
    * This class, although it's part of the public API, is mostly here to make
    * it easier for this library to manipulate the HBase RPC protocol.
@@ -419,13 +426,6 @@ public abstract class HBaseRpc {
   byte attempt;  // package-private for RegionClient and HBaseClient only.
 
   /**
-   * A filtering Callback instance. If it is non-null it will be invoked for
-   * each KeyValue encountered during a scan or get. If the filter returns
-   * its argument, the KeyValue will be included in the results.
-   */
-  Callback<KeyValue,KeyValue> filteringCallback;
-
-  /**
    * If true, this RPC should fail-fast as soon as we know we have a problem.
    */
   boolean failfast = false;
@@ -536,18 +536,6 @@ public abstract class HBaseRpc {
   /** Checks whether or not this RPC has a Deferred without creating one.  */
   final boolean hasDeferred() {
     return deferred != null;
-  }
-
-  /**
-   * Invokes the KeyValue filter, if present, to decide whether to keep the KeyValue
-   * and add it to the collection.
-   * @see RegionClient
-   */
-  KeyValue invokeFilter(KeyValue kv) throws Exception {
-    if (filteringCallback != null) {
-      return filteringCallback.call(kv);
-    }
-    return kv;
   }
 
   public String toString() {
@@ -1193,6 +1181,21 @@ public abstract class HBaseRpc {
     }
     throw new IllegalArgumentException("Not a 32 bit varint: " + result
                                        + " (5th byte: " + b + ")");
+  }
+
+  /**
+   * Handles a KeyValue.
+   */
+  static public boolean keep(final KeyValue kv, Callback<KeyValue,KeyValue> filteringCallback) {
+    try {
+      if (filteringCallback != null) {
+        return filteringCallback.call(kv) != null;
+      }
+      return true;
+    } catch (Throwable t) {
+        // pass?
+    }
+    return true;
   }
 
 }

@@ -1262,21 +1262,6 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
      }
 
     /**
-     * Handles a KeyValue.
-     */
-    protected boolean keep(final KeyValue kv) {
-      try {
-        if (rpc.invokeFilter(kv) == null) {
-          return false;
-        }
-      } catch (Throwable t) {
-        throwable = t;
-      }
-      return true;
-    }
-
-
-    /**
      * Returns the completed value.
      */
     abstract protected Object completed();
@@ -1337,7 +1322,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
      */
     protected void handle(final KeyValue kv) {
       // run the filter
-      if (!keep(kv)) {
+      if (!HBaseRpc.keep(kv, rpc.filteringCallback)) {
         return;
       }
 
@@ -1421,7 +1406,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
      */
     protected void handle(final KeyValue kv) {
       // run the filter
-      if (!keep(kv)) {
+      if (!HBaseRpc.keep(kv, rpc.filteringCallback)) {
         return;
       }
 
@@ -1651,6 +1636,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
     {
       final HBaseRpc removed = rpcs_inflight.remove(rpcid);
       assert rpc == removed;
+      current = null;
     }
 
     if (decoded instanceof NotServingRegionException

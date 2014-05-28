@@ -44,6 +44,8 @@ import org.hbase.async.generated.ClientPB.Column;
 import org.hbase.async.generated.ClientPB.Scan;
 import org.hbase.async.generated.ClientPB.ScanRequest;
 import org.hbase.async.generated.ClientPB.ScanResponse;
+import org.hbase.async.generated.ClientPB.Result;
+import org.hbase.async.generated.ClientPB;
 import org.hbase.async.generated.FilterPB;
 import org.hbase.async.generated.HBasePB.TimeRange;
 import static org.hbase.async.HBaseClient.EMPTY_ARRAY;
@@ -1128,24 +1130,46 @@ public final class Scanner {
       return null;
     }
     HBaseRpc.checkArrayLength(buf, nrows);
-    final ArrayList<ArrayList<KeyValue>> rows =
-      new ArrayList<ArrayList<KeyValue>>(nrows);
+    final ArrayList<ArrayList<KeyValue>> rows = new ArrayList<ArrayList<KeyValue>>(nrows);
     if (cell_size != 0) {
       KeyValue kv = null;
       for (int i = 0; i < nrows; i++) {
         final int nkvs = resp.getCellsPerResult(i);
         HBaseRpc.checkArrayLength(buf, nkvs);
         final ArrayList<KeyValue> row = new ArrayList<KeyValue>(nkvs);
+        boolean shouldKeep = false;
         for (int j = 0; j < nkvs; j++) {
           final int kv_length = buf.readInt();
           kv = KeyValue.fromBuffer(buf, kv);
-          row.add(kv);
+          if (filteringCallback != null) {
+              shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+              row.add(kv);
+          } else {
+              shouldKeep = true;
+          }
         }
-        rows.add(row);
+        if (shouldKeep || i == nrows - 1) {
+            // Note(lzheng):
+            // Always keep the last row so we can continue scan
+            rows.add(row);
+        }
       }
     } else {
       for (int i = 0; i < nrows; i++) {
-        rows.add(GetRequest.convertResult(resp.getResults(i), buf, cell_size));
+          if (filteringCallback != null) {
+              boolean shouldKeep = false;
+              final ArrayList<KeyValue> row = GetRequest.convertResult(resp.getResults(i), buf, cell_size);
+              for (KeyValue kv : row) {
+                  shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+              }
+              if (shouldKeep || i == nrows - 1) {
+                  // Note(lzheng):
+                  // Always keep the last row so we can continue scan
+                  rows.add(row);
+              }
+          } else {
+              rows.add(GetRequest.convertResult(resp.getResults(i), buf, cell_size));
+          }
       }
     }
     return rows;
@@ -1370,6 +1394,10 @@ public final class Scanner {
    * RPC sent out to fetch the next rows from the RegionServer.
    */
   private final class GetNextRowsRequest extends HBaseRpc {
+      public GetNextRowsRequest() {
+          super();
+          this.filteringCallback = Scanner.this.filteringCallback;
+      }
 
     @Override
     byte[] method(final byte server_version) {
