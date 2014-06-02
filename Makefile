@@ -65,8 +65,11 @@ asynchbase_SOURCES := \
 	src/BufferedIncrement.java	\
 	src/Bytes.java	\
 	src/ClientStats.java	\
+	src/ColumnPaginationFilter.java	\
 	src/ColumnPrefixFilter.java	\
 	src/ColumnRangeFilter.java	\
+	src/Comparator.java	\
+	src/CompareFilter.java	\
 	src/CompareAndSetRequest.java	\
 	src/ConnectionResetException.java	\
 	src/Counter.java	\
@@ -78,6 +81,7 @@ asynchbase_SOURCES := \
 	src/HBaseRpc.java	\
 	src/HasFailedRpcException.java	\
 	src/InvalidResponseException.java	\
+	src/KeyOnlyFilter.java	\
 	src/KeyRegexpFilter.java	\
 	src/KeyValue.java	\
 	src/MultiAction.java	\
@@ -86,6 +90,7 @@ asynchbase_SOURCES := \
 	src/NotServingRegionException.java	\
 	src/PleaseThrottleException.java	\
 	src/PutRequest.java	\
+	src/QualifierFilter.java	\
 	src/RecoverableException.java	\
 	src/RegionClient.java	\
 	src/RegionInfo.java	\
@@ -137,7 +142,7 @@ test_LIBADD := \
         $(jar)
 
 package_dir := $(subst .,/,$(package))
-AM_JAVACFLAGS := -g:lines,vars,source -Xlint -source 6 -target 6
+AM_JAVACFLAGS := -J-Xmx3g -g:lines,vars,source -Xlint -source 6 -target 6
 JAVAC := javac
 JVM_ARGS :=
 PROTOC := protoc

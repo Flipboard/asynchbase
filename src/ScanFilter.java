@@ -69,17 +69,27 @@ public abstract class ScanFilter {
    * Serializes the byte representation to the RPC channel buffer.
    * <p>
    * This method is only used with HBase 0.94 and before.
-   * @param buf The RPC channel buffer to which the byte array is serialized
+ * @param server_version TODO
+ * @param buf The RPC channel buffer to which the byte array is serialized
    */
-  abstract void serializeOld(ChannelBuffer buf);
+  abstract void serializeOld(byte server_version, ChannelBuffer buf);
 
   /**
    * returns the number of bytes that it will write to the RPC channel buffer when {@code serialize}
    * is called. This method helps predict the initial size of the byte array
    * <p>
    * This method is only used with HBase 0.94 and before.
+ * @param server_version TODO
    * @return A strictly positive integer
    */
-  abstract int predictSerializedSize();
+  abstract int predictSerializedSize(byte server_version);
 
+  public static byte writableByteArrayComparableCode (byte server_version) {
+      // position in array org.apache.hadoop.hbase.io.HbaseObjectWritable
+      if (server_version <= RegionClient.SERVER_VERSION_092_OR_ABOVE) {
+          return 0x35;
+      } else {
+          return 0x34;
+      }
+  }
 }

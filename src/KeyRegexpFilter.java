@@ -145,7 +145,7 @@ public final class KeyRegexpFilter extends ScanFilter {
   }
 
   @Override
-  void serializeOld(final ChannelBuffer buf) {
+  void serializeOld(byte server_version, final ChannelBuffer buf) {
     buf.writeByte((byte) ROWFILTER.length);                     // 1
     buf.writeBytes(ROWFILTER);                                  // 40
     // writeUTF of the comparison operator
@@ -165,7 +165,7 @@ public final class KeyRegexpFilter extends ScanFilter {
   }
 
   @Override
-  int predictSerializedSize() {
+  int predictSerializedSize(byte server_version) {
     return 1 + 40 + 2 + 5 + 1 + 1 + 1 + 52
         + 2 + regexp.length + 2 + charset.length;
   }

@@ -1205,7 +1205,7 @@ public final class Scanner {
      * to be less than what we need, there will be an exception which will
      * prevent the RPC from being serialized.  That'd be a severe bug.
      */
-    private int predictSerializedSize() {
+    private int predictSerializedSize(final byte server_version) {
       int size = 0;
       size += 4;  // int:  Number of parameters.
       size += 1;  // byte: Type of the 1st parameter.
@@ -1225,7 +1225,7 @@ public final class Scanner {
       size += 1;  // bool: Whether or not to populate the blockcache.
       size += 1;  // byte: Whether or not to use a filter.
       if (filter != null) {
-        size += filter.predictSerializedSize();
+        size += filter.predictSerializedSize(server_version);
       }
       size += 8;  // long: Minimum timestamp.
       size += 8;  // long: Maximum timestamp.
@@ -1309,7 +1309,7 @@ public final class Scanner {
     /** Serializes this request for HBase 0.94 and before.  */
     private ChannelBuffer serializeOld(final byte server_version) {
       final ChannelBuffer buf = newBuffer(server_version,
-                                          predictSerializedSize());
+                                          predictSerializedSize(server_version));
       buf.writeInt(2);  // Number of parameters.
 
       // 1st param: byte array containing region name
@@ -1338,7 +1338,7 @@ public final class Scanner {
         buf.writeByte(0x00); // boolean (false): don't use a filter.
       } else {
         buf.writeByte(0x01); // boolean (true): use a filter.
-        filter.serializeOld(buf);
+        filter.serializeOld(server_version, buf);
       }
 
       // TimeRange

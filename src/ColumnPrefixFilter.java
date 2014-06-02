@@ -79,12 +79,12 @@ public final class ColumnPrefixFilter extends ScanFilter {
   }
 
   @Override
-  int predictSerializedSize() {
+  int predictSerializedSize(byte server_version) {
     return 1 + NAME.length + 3 + prefix.length;
   }
 
   @Override
-  void serializeOld(final ChannelBuffer buf) {
+  void serializeOld(byte server_version, final ChannelBuffer buf) {
     buf.writeByte((byte) NAME.length);     // 1
     buf.writeBytes(NAME);                  // 49
     HBaseRpc.writeByteArray(buf, prefix);  // 3 + prefix.length

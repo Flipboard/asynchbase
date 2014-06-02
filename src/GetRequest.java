@@ -44,8 +44,7 @@ import org.hbase.async.generated.ClientPB;
  */
 public final class GetRequest extends HBaseRpc
   implements HBaseRpc.HasTable, HBaseRpc.HasKey,
-             HBaseRpc.HasFamily, HBaseRpc.HasQualifiers,
-             HBaseRpc.HasFilter {
+             HBaseRpc.HasFamily, HBaseRpc.HasQualifiers {
 
   private static final byte[] GET = new byte[] { 'g', 'e', 't' };
   static final byte[] GGET = new byte[] { 'G', 'e', 't' };  // HBase 0.95+
@@ -57,8 +56,9 @@ public final class GetRequest extends HBaseRpc
   private long lockid = RowLock.NO_LOCK;
   private long min_timestamp = 0;
   private long max_timestamp = Long.MAX_VALUE;
-  private byte[] filter;
-  private byte[] filterName;
+
+  /** Filter to apply on the scanner.  */
+  private ScanFilter filter;
 
   /**
    * How many versions of each cell to retrieve.
@@ -264,18 +264,6 @@ public final class GetRequest extends HBaseRpc
     return qualifier(qualifier.getBytes());
   }
 
-  /** Specifies an filter..  */
-  public GetRequest filter(final byte[] filter) {
-    this.filter = filter;
-    return this;
-  }
-
-  /** Specifies an filter..  */
-  public GetRequest filterName(final byte[] filterName) {
-    this.filterName = filterName;
-    return this;
-  }
-
   /** Specifies a minimum timestamp.  */
   public GetRequest minTimestamp(final long timestamp) {
     this.min_timestamp = timestamp;
@@ -359,14 +347,32 @@ public final class GetRequest extends HBaseRpc
     return qualifiers;
   }
 
-  @Override
-  public byte[] filter() {
+  /**
+   * Specifies the filter to apply to this scanner.
+   * @param filter The filter.  If {@code null}, then no filter will be used.
+   * @since 1.5.x
+   */
+  public GetRequest setFilter(final ScanFilter filter) {
+    this.filter = filter;
+    return this;
+  }
+
+  /**
+   * Returns the possibly-{@code null} filter applied to this scanner.
+   * @since 1.5.x
+   */
+  public ScanFilter getFilter() {
     return filter;
   }
 
-  @Override
-  public byte[] filterName() {
-    return filterName;
+  /**
+   * Clears any filter that was previously set on this scanner.
+   * <p>
+   * This is a shortcut for {@link #setFilter}{@code (null)}
+   * @since 1.5.x
+   */
+  public void clearFilter() {
+    filter = null;
   }
 
   public String toString() {
@@ -400,10 +406,8 @@ public final class GetRequest extends HBaseRpc
     size += 8;  // long: Lock ID.
     size += 4;  // int:  Max number of versions to return.
     size += 1;  // byte: Whether or not to use a filter.
-    if (filterName != null && filter != null) {
-      size += 3;  // vint: row filter name length (3 bytes => max length = 32768).
-      size += filterName.length;  // The filter name.
-      size += filter.length;  // serialized filter see org.apache.hadoop.hbase.util.Writables.getBytes
+    if (filter != null) {
+        size += filter.predictSerializedSize(server_version);
     }
     if (server_version >= 26) {  // New in 0.90 (because of HBASE-3174).
       size += 1;  // byte: Whether or not to cache the blocks read.
@@ -483,12 +487,11 @@ public final class GetRequest extends HBaseRpc
     buf.writeLong(lockid);  // Lock ID.
     buf.writeInt(maxVersions()); // Max number of versions to return.
 
-    if (filterName != null && filter != null) {
-      buf.writeByte(0x01); // boolean (true): whether or not to use a filter.
-      writeByteArray(buf, filterName); // the filter name
-      buf.writeBytes(filter); // the filter
+    if (filter == null) {
+        buf.writeByte(0x00); // boolean (false): don't use a filter.
     } else {
-      buf.writeByte(0x00); // boolean (false): whether or not to use a filter.
+        buf.writeByte(0x01); // boolean (true): use a filter.
+        filter.serializeOld(server_version, buf);
     }
 
     if (server_version >= 26) {  // New in 0.90 (because of HBASE-3174).

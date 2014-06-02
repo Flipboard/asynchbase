@@ -106,25 +106,25 @@ public final class FilterList extends ScanFilter {
   }
 
   @Override
-  int predictSerializedSize() {
+  int predictSerializedSize(byte server_version) {
     int size = 1 + NAME.length + 1 + 4;
     for (final ScanFilter filter : filters) {
       size += 2;
-      size += filter.predictSerializedSize();
+      size += filter.predictSerializedSize(server_version);
     }
     return size;
   }
 
   @Override
-  void serializeOld(final ChannelBuffer buf) {
+  void serializeOld(byte server_version, final ChannelBuffer buf) {
     buf.writeByte((byte) NAME.length);   // 1
     buf.writeBytes(NAME);                //41
     buf.writeByte((byte) op.ordinal());  // 1
     buf.writeInt(filters.size());        // 4
     for (final ScanFilter filter : filters) {
-      buf.writeByte(54);  // 1 : code for WritableByteArrayComparable
+      buf.writeByte(writableByteArrayComparableCode(server_version));  // 1 : code for WritableByteArrayComparable
       buf.writeByte(0);   // 1 : code for NOT_ENCODED
-      filter.serializeOld(buf);
+      filter.serializeOld(server_version, buf);
     }
   }
 

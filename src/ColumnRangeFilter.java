@@ -121,14 +121,14 @@ public final class ColumnRangeFilter extends ScanFilter {
   }
 
   @Override
-  int predictSerializedSize() {
+  int predictSerializedSize(byte server_version) {
     return 1 + NAME.length
       + 1 + 3 + (start_column == null ? 0 : start_column.length) + 1
       + 1 + 3 + (stop_column == null ? 0 : stop_column.length) + 1;
   }
 
   @Override
-  void serializeOld(final ChannelBuffer buf) {
+  void serializeOld(byte server_version, final ChannelBuffer buf) {
     buf.writeByte((byte) NAME.length);             // 1
     buf.writeBytes(NAME);                          // 48
 
