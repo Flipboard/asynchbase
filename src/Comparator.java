@@ -1,6 +1,7 @@
 package org.hbase.async;
 
 import org.hbase.async.generated.ComparatorPB;
+import org.hbase.async.generated.ComparatorPB.ByteArrayComparable;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.util.CharsetUtil;
 
@@ -86,8 +87,12 @@ public abstract class Comparator {
 
     @Override
     public byte[] toByteArray() {
-      return ComparatorPB.ByteArrayComparable.newBuilder()
-          .setValue(Bytes.wrap(this.value)).build().toByteArray();
+      ByteArrayComparable comparable = ComparatorPB.ByteArrayComparable.newBuilder()
+          .setValue(Bytes.wrap(this.value)).build();
+
+      return ComparatorPB.BinaryComparator.newBuilder()
+          .setComparable(comparable).build().toByteArray();
+
     }
 
     @Override
