@@ -1142,7 +1142,11 @@ public final class Scanner {
           final int kv_length = buf.readInt();
           kv = KeyValue.fromBuffer(buf, kv);
           if (filteringCallback != null) {
-              shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+              try {
+                  shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+              } catch (Exception e) {
+                  throw new NonRecoverableException("HBaseRpc.keep failed:", e);
+              }
               row.add(kv);
           } else {
               shouldKeep = true;
@@ -1160,7 +1164,11 @@ public final class Scanner {
               boolean shouldKeep = false;
               final ArrayList<KeyValue> row = GetRequest.convertResult(resp.getResults(i), buf, cell_size);
               for (KeyValue kv : row) {
-                  shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+                  try {
+                      shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
+                  } catch (Exception e) {
+                      throw new NonRecoverableException("HBaseRpc.keep failed:", e);
+                  }
               }
               if (shouldKeep || i == nrows - 1) {
                   // Note(lzheng):

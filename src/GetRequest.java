@@ -533,7 +533,11 @@ public final class GetRequest extends HBaseRpc
       readProtobuf(buf, ClientPB.GetResponse.PARSER);
     if (isGetRequest()) {
       if (filteringCallback != null) {
-          return extractStreamingResponse(resp, buf, cell_size);
+          try {
+              return extractStreamingResponse(resp, buf, cell_size);
+          } catch (Exception e) {
+              return e;
+          }
       } else {
           return extractResponse(resp, buf, cell_size);
       }
@@ -595,7 +599,7 @@ public final class GetRequest extends HBaseRpc
    */
   ArrayList<KeyValue> extractStreamingResponse(final ClientPB.GetResponse resp,
                                              final ChannelBuffer buf,
-                                             final int cell_size) {
+                                             final int cell_size)  throws Exception {
     final ClientPB.Result res = resp.getResult();
     if (res == null) {
       return new ArrayList<KeyValue>(0);
@@ -612,7 +616,7 @@ public final class GetRequest extends HBaseRpc
    */
   ArrayList<KeyValue> convertStreamingResult(final ClientPB.Result res,
                                            final ChannelBuffer buf,
-                                           final int cell_size) {
+                                           final int cell_size) throws Exception {
     final int cell_kvs = RegionClient.numberOfKeyValuesAhead(buf, cell_size);
     final int size = res.getCellCount();
     final ArrayList<KeyValue> rows = new ArrayList<KeyValue>(10);

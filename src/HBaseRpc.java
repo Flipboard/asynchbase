@@ -1186,14 +1186,9 @@ public abstract class HBaseRpc {
   /**
    * Handles a KeyValue.
    */
-  static public boolean keep(final KeyValue kv, Callback<KeyValue,KeyValue> filteringCallback) {
-    try {
-      if (filteringCallback != null) {
-        return filteringCallback.call(kv) != null;
-      }
-      return true;
-    } catch (Throwable t) {
-        // pass?
+  static public boolean keep(final KeyValue kv, Callback<KeyValue,KeyValue> filteringCallback) throws Exception {
+    if (filteringCallback != null) {
+      return filteringCallback.call(kv) != null;
     }
     return true;
   }

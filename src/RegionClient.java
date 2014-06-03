@@ -1320,7 +1320,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
      * Handles a new KeyValue by adding it to the row. Checks the filter to see
      * whether to include it or not.
      */
-    protected void handle(final KeyValue kv) {
+    protected void handle(final KeyValue kv) throws Exception {
       // run the filter
       if (!HBaseRpc.keep(kv, rpc.filteringCallback)) {
         return;
@@ -1361,14 +1361,18 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
       }
 
       // here we're always positioned at the beginning of a key/value
-      while (offset < length) {
-        KeyValue kv = readKeyValue(buf);
+      try {
+          while (offset < length) {
+            KeyValue kv = readKeyValue(buf);
 
-        // handle this KV
-        handle(kv);
+            // handle this KV
+            handle(kv);
 
-        // checkpoint after each success
-        checkpoint();
+            // checkpoint after each success
+            checkpoint();
+          }
+      } catch (Exception e) {
+          return e;
       }
 
       // if we get here we're done - which can be null
@@ -1404,7 +1408,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
     /**
      * Handles a new KeyValue by adding it to the current row.
      */
-    protected void handle(final KeyValue kv) {
+    protected void handle(final KeyValue kv) throws Exception {
       // run the filter
       if (!HBaseRpc.keep(kv, rpc.filteringCallback)) {
         return;
@@ -1505,12 +1509,16 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
         }
 
         // try to finish a row
-        while (kvs < num_kvs) {
-          KeyValue kv = readKeyValue(buf);
-          handle(kv);
-          kvs += 1;
+        try {
+            while (kvs < num_kvs) {
+              KeyValue kv = readKeyValue(buf);
+              handle(kv);
+              kvs += 1;
 
-          checkpoint();
+              checkpoint();
+            }
+        } catch (Exception e) {
+            return e;
         }
 
         // if we get here we finished a row - only start a new one if necessary
