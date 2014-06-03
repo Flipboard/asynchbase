@@ -32,6 +32,8 @@ import java.util.ArrayList;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.hbase.async.generated.ClientPB;
+import org.hbase.async.generated.FilterPB;
+import org.hbase.async.generated.HBasePB.TimeRange;
 
 /**
  * Reads something from HBase.
@@ -453,8 +455,25 @@ public final class GetRequest extends HBaseRpc
       getpb.addColumn(column.build());
     }
 
-    // TODO: Filters.
+    // Filters
+    if (filter != null) {
+      getpb.setFilter(FilterPB.Filter.newBuilder()
+                     .setNameBytes(Bytes.wrap(filter.name()))
+                     .setSerializedFilter(Bytes.wrap(filter.serialize()))
+                     .build());
+    }
 
+    // TimeRange
+    if (min_timestamp != 0 || max_timestamp != Long.MAX_VALUE) {
+      final TimeRange.Builder time = TimeRange.newBuilder();
+      if (min_timestamp != 0) {
+        time.setFrom(min_timestamp);
+      }
+      if (max_timestamp != Long.MAX_VALUE) {
+        time.setTo(max_timestamp);
+      }
+      getpb.setTimeRange(time.build());
+    }
     final int versions = maxVersions();  // Shadows this.versions
     if (versions != 1) {
       getpb.setMaxVersions(versions);
