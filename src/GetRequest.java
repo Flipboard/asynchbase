@@ -26,7 +26,14 @@
  */
 package org.hbase.async;
 
+import com.stumbleupon.async.Callback;
+
+import java.util.ArrayList;
+
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.hbase.async.generated.ClientPB;
+import org.hbase.async.generated.FilterPB;
+import org.hbase.async.generated.HBasePB.TimeRange;
 
 /**
  * Reads something from HBase.
@@ -39,10 +46,10 @@ import org.jboss.netty.buffer.ChannelBuffer;
  */
 public final class GetRequest extends HBaseRpc
   implements HBaseRpc.HasTable, HBaseRpc.HasKey,
-             HBaseRpc.HasFamily, HBaseRpc.HasQualifiers,
-             HBaseRpc.HasFilter {
+             HBaseRpc.HasFamily, HBaseRpc.HasQualifiers {
 
   private static final byte[] GET = new byte[] { 'g', 'e', 't' };
+  static final byte[] GGET = new byte[] { 'G', 'e', 't' };  // HBase 0.95+
   private static final byte[] EXISTS =
     new byte[] { 'e', 'x', 'i', 's', 't', 's' };
 
@@ -51,12 +58,21 @@ public final class GetRequest extends HBaseRpc
   private long lockid = RowLock.NO_LOCK;
   private long min_timestamp = 0;
   private long max_timestamp = Long.MAX_VALUE;
-  private byte[] filter;
-  private byte[] filterName;
+
+  /** Filter to apply on the scanner.  */
+  private ScanFilter filter;
+
   /**
    * How many versions of each cell to retrieve.
+   * The least significant bit is used as a flag to indicate when
+   * this Get request is in fact an Exist request (i.e. like Get
+   * except that instead of returning a result the RPC returns a
+   * boolean indicating whether the row exists or not).
    */
-  private int versions = 1;
+  private int versions = 1 << 1;
+
+  /** When set in the `versions' field, this is an Exist RPC. */
+  private static final int EXIST_FLAG = 0x1;
 
   /**
    * Constructor.
@@ -65,7 +81,7 @@ public final class GetRequest extends HBaseRpc
    * @param key The row key to get in that table.
    */
   public GetRequest(final byte[] table, final byte[] key) {
-    super(GET, table, key);
+    super(table, key);
   }
 
   /**
@@ -88,6 +104,70 @@ public final class GetRequest extends HBaseRpc
   }
 
   /**
+   * Constructor.
+   * <strong>These byte arrays will NOT be copied.</strong>
+   * @param table The non-empty name of the table to use.
+   * @param key The row key to get in that table.
+   * @param family The column family.
+   * @since 1.5
+   */
+  public GetRequest(final byte[] table,
+                    final byte[] key,
+                    final byte[] family) {
+    super(table, key);
+    this.family(family);
+  }
+
+  /**
+   * Constructor.
+   * @param table The non-empty name of the table to use.
+   * @param key The row key to get in that table.
+   * @param family The column family.
+   * @since 1.5
+   */
+  public GetRequest(final String table,
+                    final String key,
+                    final String family) {
+    this(table, key);
+    this.family(family);
+  }
+
+  /**
+   * Constructor.
+   * <strong>These byte arrays will NOT be copied.</strong>
+   * @param table The non-empty name of the table to use.
+   * @param key The row key to get in that table.
+   * @param family The column family.
+   * @param qualifier The column qualifier.
+   * @since 1.5
+   */
+  public GetRequest(final byte[] table,
+                    final byte[] key,
+                    final byte[] family,
+                    final byte[] qualifier) {
+    super(table, key);
+    this.family(family);
+    this.qualifier(qualifier);
+  }
+
+  /**
+   * Constructor.
+   * @param table The non-empty name of the table to use.
+   * @param key The row key to get in that table.
+   * @param family The column family.
+   * @param qualifier The column qualifier.
+   * @since 1.5
+   */
+  public GetRequest(final String table,
+                    final String key,
+                    final String family,
+                    final String qualifier) {
+    this(table, key);
+    this.family(family);
+    this.qualifier(qualifier);
+  }
+
+  /**
    * Private constructor to build an "exists" RPC.
    * @param unused Unused, simply used to help the compiler find this ctor.
    * @param table The non-empty name of the table to use.
@@ -96,7 +176,8 @@ public final class GetRequest extends HBaseRpc
   private GetRequest(final float unused,
                      final byte[] table,
                      final byte[] key) {
-    super(EXISTS, table, key);
+    super(table, key);
+    this.versions |= EXIST_FLAG;
   }
 
   /**
@@ -123,6 +204,11 @@ public final class GetRequest extends HBaseRpc
     final GetRequest rpc = new GetRequest(0F, table, key);
     rpc.family(family);
     return rpc;
+  }
+
+  /** Returns true if this is actually an "Get" RPC. */
+  private boolean isGetRequest() {
+    return (versions & EXIST_FLAG) == 0;
   }
 
   /**
@@ -180,18 +266,6 @@ public final class GetRequest extends HBaseRpc
     return qualifier(qualifier.getBytes());
   }
 
-  /** Specifies an filter..  */
-  public GetRequest filter(final byte[] filter) {
-    this.filter = filter;
-    return this;
-  }
-
-  /** Specifies an filter..  */
-  public GetRequest filterName(final byte[] filterName) {
-    this.filterName = filterName;
-    return this;
-  }
-
   /** Specifies a minimum timestamp.  */
   public GetRequest minTimestamp(final long timestamp) {
     this.min_timestamp = timestamp;
@@ -234,7 +308,7 @@ public final class GetRequest extends HBaseRpc
       throw new IllegalArgumentException("Need a strictly positive number: "
                                          + versions);
     }
-    this.versions = versions;
+    this.versions = (versions << 1) | (this.versions & EXIST_FLAG);
     return this;
   }
 
@@ -244,7 +318,15 @@ public final class GetRequest extends HBaseRpc
    * @since 1.4
    */
   public int maxVersions() {
-    return versions;
+    return versions >>> 1;
+  }
+
+  @Override
+  byte[] method(final byte server_version) {
+    if (server_version >= RegionClient.SERVER_VERSION_095_OR_ABOVE) {
+      return GGET;
+    }
+    return isGetRequest() ? GET : EXISTS;
   }
 
   @Override
@@ -267,18 +349,36 @@ public final class GetRequest extends HBaseRpc
     return qualifiers;
   }
 
-  @Override
-  public byte[] filter() {
+  /**
+   * Specifies the filter to apply to this scanner.
+   * @param filter The filter.  If {@code null}, then no filter will be used.
+   * @since 1.5.x
+   */
+  public GetRequest setFilter(final ScanFilter filter) {
+    this.filter = filter;
+    return this;
+  }
+
+  /**
+   * Returns the possibly-{@code null} filter applied to this scanner.
+   * @since 1.5.x
+   */
+  public ScanFilter getFilter() {
     return filter;
   }
 
-  @Override
-  public byte[] filterName() {
-    return filterName;
+  /**
+   * Clears any filter that was previously set on this scanner.
+   * <p>
+   * This is a shortcut for {@link #setFilter}{@code (null)}
+   * @since 1.5.x
+   */
+  public void clearFilter() {
+    filter = null;
   }
 
   public String toString() {
-    final String klass = method() == GET ? "GetRequest" : "Exists";
+    final String klass = isGetRequest() ? "GetRequest" : "Exists";
     return super.toStringWithQualifiers(klass, family, qualifiers);
   }
 
@@ -308,10 +408,8 @@ public final class GetRequest extends HBaseRpc
     size += 8;  // long: Lock ID.
     size += 4;  // int:  Max number of versions to return.
     size += 1;  // byte: Whether or not to use a filter.
-    if (filterName != null && filter != null) {
-      size += 3;  // vint: row filter name length (3 bytes => max length = 32768).
-      size += filterName.length;  // The filter name.
-      size += filter.length;  // serialized filter see org.apache.hadoop.hbase.util.Writables.getBytes
+    if (filter != null) {
+        size += filter.predictSerializedSize(server_version);
     }
     if (server_version >= 26) {  // New in 0.90 (because of HBASE-3174).
       size += 1;  // byte: Whether or not to cache the blocks read.
@@ -340,6 +438,59 @@ public final class GetRequest extends HBaseRpc
 
   /** Serializes this request.  */
   ChannelBuffer serialize(final byte server_version) {
+    if (server_version < RegionClient.SERVER_VERSION_095_OR_ABOVE) {
+      return serializeOld(server_version);
+    }
+    final ClientPB.Get.Builder getpb = ClientPB.Get.newBuilder()
+      .setRow(Bytes.wrap(key));
+
+    if (family != null) {
+      final ClientPB.Column.Builder column = ClientPB.Column.newBuilder();
+      column.setFamily(Bytes.wrap(family));
+      if (qualifiers != null) {
+        for (final byte[] qualifier : qualifiers) {
+          column.addQualifier(Bytes.wrap(qualifier));
+        }
+      }
+      getpb.addColumn(column.build());
+    }
+
+    // Filters
+    if (filter != null) {
+      getpb.setFilter(FilterPB.Filter.newBuilder()
+                     .setNameBytes(Bytes.wrap(filter.name()))
+                     .setSerializedFilter(Bytes.wrap(filter.serialize()))
+                     .build());
+    }
+
+    // TimeRange
+    if (min_timestamp != 0 || max_timestamp != Long.MAX_VALUE) {
+      final TimeRange.Builder time = TimeRange.newBuilder();
+      if (min_timestamp != 0) {
+        time.setFrom(min_timestamp);
+      }
+      if (max_timestamp != Long.MAX_VALUE) {
+        time.setTo(max_timestamp);
+      }
+      getpb.setTimeRange(time.build());
+    }
+    final int versions = maxVersions();  // Shadows this.versions
+    if (versions != 1) {
+      getpb.setMaxVersions(versions);
+    }
+    if (!isGetRequest()) {
+      getpb.setExistenceOnly(true);
+    }
+
+    final ClientPB.GetRequest.Builder get = ClientPB.GetRequest.newBuilder()
+      .setRegion(region.toProtobuf())
+      .setGet(getpb.build());
+
+    return toChannelBuffer(GetRequest.GGET, get.build());
+  }
+
+  /** Serializes this request for HBase 0.94 and before.  */
+  private ChannelBuffer serializeOld(final byte server_version) {
     final ChannelBuffer buf = newBuffer(server_version,
                                         predictSerializedSize(server_version));
     buf.writeInt(2);  // Number of parameters.
@@ -353,14 +504,13 @@ public final class GetRequest extends HBaseRpc
     buf.writeByte(1);    // Get#GET_VERSION.  Undocumented versioning of Get.
     writeByteArray(buf, key);
     buf.writeLong(lockid);  // Lock ID.
-    buf.writeInt(versions); // Max number of versions to return.
+    buf.writeInt(maxVersions()); // Max number of versions to return.
 
-    if (filterName != null && filter != null) {
-      buf.writeByte(0x01); // boolean (true): whether or not to use a filter.
-      writeByteArray(buf, filterName); // the filter name
-      buf.writeBytes(filter); // the filter
+    if (filter == null) {
+        buf.writeByte(0x00); // boolean (false): don't use a filter.
     } else {
-      buf.writeByte(0x00); // boolean (false): whether or not to use a filter.
+        buf.writeByte(0x01); // boolean (true): use a filter.
+        filter.serializeOld(server_version, buf);
     }
 
     if (server_version >= 26) {  // New in 0.90 (because of HBASE-3174).
@@ -394,6 +544,116 @@ public final class GetRequest extends HBaseRpc
       buf.writeInt(0);  // Attributes map: number of elements.
     }
     return buf;
+  }
+
+  @Override
+  Object deserialize(final ChannelBuffer buf, final int cell_size) {
+    final ClientPB.GetResponse resp =
+      readProtobuf(buf, ClientPB.GetResponse.PARSER);
+    if (isGetRequest()) {
+      if (filteringCallback != null) {
+          try {
+              return extractStreamingResponse(resp, buf, cell_size);
+          } catch (Exception e) {
+              return e;
+          }
+      } else {
+          return extractResponse(resp, buf, cell_size);
+      }
+    } else {
+      final ClientPB.Result result = resp.getResult();
+      return result != null ? result.getExists() : false;  // is `null' possible here?
+    }
+  }
+
+  /**
+   * Transforms a protobuf get response into a list of {@link KeyValue}.
+   * @param resp The protobuf response from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  static ArrayList<KeyValue> extractResponse(final ClientPB.GetResponse resp,
+                                             final ChannelBuffer buf,
+                                             final int cell_size) {
+    final ClientPB.Result res = resp.getResult();
+    if (res == null) {
+      return new ArrayList<KeyValue>(0);
+    }
+    return convertResult(res, buf, cell_size);
+  }
+
+  /**
+   * Converts a protobuf result into a list of {@link KeyValue}.
+   * @param res The protobuf'ed results from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  static ArrayList<KeyValue> convertResult(final ClientPB.Result res,
+                                           final ChannelBuffer buf,
+                                           final int cell_size) {
+    final int cell_kvs = RegionClient.numberOfKeyValuesAhead(buf, cell_size);
+    final int size = res.getCellCount();
+    final ArrayList<KeyValue> rows = new ArrayList<KeyValue>(size + cell_kvs);
+    KeyValue kv = null;
+    for (int i = 0; i < size; i++) {
+      kv = KeyValue.fromCell(res.getCell(i), kv);
+      rows.add(kv);
+    }
+    for (int i = 0; i < cell_kvs; i++) {
+      final int kv_length = buf.readInt();
+      kv = KeyValue.fromBuffer(buf, kv);
+      rows.add(kv);
+    }
+    return rows;
+  }
+
+  /**
+   * Transforms a protobuf get response into a list of {@link KeyValue}.
+   * @param resp The protobuf response from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  ArrayList<KeyValue> extractStreamingResponse(final ClientPB.GetResponse resp,
+                                             final ChannelBuffer buf,
+                                             final int cell_size)  throws Exception {
+    final ClientPB.Result res = resp.getResult();
+    if (res == null) {
+      return new ArrayList<KeyValue>(0);
+    }
+    return convertStreamingResult(res, buf, cell_size);
+  }
+
+  /**
+   * Converts a protobuf result into a list of {@link KeyValue}.
+   * @param res The protobuf'ed results from which to extract the KVs.
+   * @param buf The buffer from which the protobuf was read.
+   * @param cell_size The number of bytes of the cell block that follows,
+   * in the buffer.
+   */
+  ArrayList<KeyValue> convertStreamingResult(final ClientPB.Result res,
+                                           final ChannelBuffer buf,
+                                           final int cell_size) throws Exception {
+    final int cell_kvs = RegionClient.numberOfKeyValuesAhead(buf, cell_size);
+    final int size = res.getCellCount();
+    final ArrayList<KeyValue> rows = new ArrayList<KeyValue>(10);
+    KeyValue kv = null;
+    for (int i = 0; i < size; i++) {
+      kv = KeyValue.fromCell(res.getCell(i), kv);
+      if (HBaseRpc.keep(kv, filteringCallback)) {
+          rows.add(kv);
+      }
+    }
+    for (int i = 0; i < cell_kvs; i++) {
+      final int kv_length = buf.readInt();
+      kv = KeyValue.fromBuffer(buf, kv);
+      if (HBaseRpc.keep(kv, filteringCallback)) {
+          rows.add(kv);
+      }
+    }
+    return rows;
   }
 
 }
