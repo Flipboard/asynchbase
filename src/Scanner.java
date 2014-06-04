@@ -1130,7 +1130,9 @@ public final class Scanner {
       return null;
     }
     HBaseRpc.checkArrayLength(buf, nrows);
-    final ArrayList<ArrayList<KeyValue>> rows = new ArrayList<ArrayList<KeyValue>>(nrows);
+
+    // pre-allocate enough when there is no callback. Otherwise, just allocate one for the last row.
+    final ArrayList<ArrayList<KeyValue>> rows = new ArrayList<ArrayList<KeyValue>>(filteringCallback == null ? nrows : 1);
     if (cell_size != 0) {
       KeyValue kv = null;
       for (int i = 0; i < nrows; i++) {
