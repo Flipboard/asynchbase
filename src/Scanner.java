@@ -1492,6 +1492,7 @@ public final class Scanner {
       final ScanRequest req = ScanRequest.newBuilder()
         .setScannerId(scanner_id)
         .setCloseScanner(true)
+        .setNumberOfRows(0)
         .build();
       return toChannelBuffer(SCAN, req);
     }
