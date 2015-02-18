@@ -1143,13 +1143,13 @@ public final class Scanner {
         for (int j = 0; j < nkvs; j++) {
           final int kv_length = buf.readInt();
           kv = KeyValue.fromBuffer(buf, kv);
+          row.add(kv);
           if (filteringCallback != null) {
               try {
                   shouldKeep = shouldKeep || HBaseRpc.keep(kv, filteringCallback);
               } catch (Exception e) {
                   throw new NonRecoverableException("HBaseRpc.keep failed:", e);
               }
-              row.add(kv);
           } else {
               shouldKeep = true;
           }
