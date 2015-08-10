@@ -587,8 +587,13 @@ public final class GetRequest extends HBaseRpc
     writeByteArray(buf, key);
     buf.writeLong(lockid);  // Lock ID.
     buf.writeInt(maxVersions()); // Max number of versions to return.
-    buf.writeByte(0x00); // boolean (false): don't use a filter.
-    buf.writeByte(0x00); // boolean (false): don't use a filter.
+
+    if (filter == null) {
+      buf.writeByte(0x00); // boolean (false): don't use a filter.
+    } else {
+      buf.writeByte(0x01); // boolean (true): use a filter.
+      filter.serializeOld(buf);
+    }
 
     if (server_version >= 26) {  // New in 0.90 (because of HBASE-3174).
       buf.writeByte(0x01);  // boolean (true): whether to cache the blocks.
